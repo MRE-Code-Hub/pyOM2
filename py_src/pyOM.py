@@ -147,10 +147,7 @@ class pyOM:
        
      self.fortran.set_idemix_parameter()      
      self.fortran.set_eke_diffusivities()
-     self.fortran.set_tke_diffusivities()
-     
-     self.fortran.rossmix_main()   
-        
+     self.fortran.set_tke_diffusivities()        
      if M.enable_momentum_equation:      self.fortran.momentum()
      if M.enable_thermodynamic_equation:
          self.fortran.thermodynamics()
