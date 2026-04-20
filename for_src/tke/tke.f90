@@ -76,7 +76,7 @@ subroutine set_tke_diffusivities
  !---------------------------------------------------------------------------------
  !  simple convective adjustment
  !---------------------------------------------------------------------------------
-    where (Nsqr(:,:,:,tau)< 0.0) kappaH = 1.0
+    where (Nsqr(:,:,:,tau)< 0.0) kappaH = kappaH_0_convect_adjust
   endif
  endif
 end subroutine set_tke_diffusivities

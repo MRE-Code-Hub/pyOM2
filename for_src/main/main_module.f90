@@ -206,6 +206,7 @@ module main_module
       real*8 :: A_hbi = 0.0                     ! lateral biharmonic viscosity in m^4/s
       real*8 :: K_hbi = 0.0                     ! lateral biharmonic diffusivity in m^4/s
       real*8 :: kappaH_0 = 0.0, kappaM_0 = 0.0  ! fixed values for vertical viscosity/diffusivity which are set for no TKE model
+      real*8 :: kappaH_0_convect_adjust = 1.0   ! large vertical diffusivity for N**2<0 and no TKE model
       real*8, allocatable :: kappaM(:,:,:)      ! vertical viscosity in m^2/s
       real*8, allocatable :: kappaH(:,:,:)      ! vertical diffusivity in m^2/s
 !---------------------------------------------------------------------------------
