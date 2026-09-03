@@ -54,8 +54,10 @@ class kelv1(pyOM):
 
    def u_star_fct(self,k):
      M=self.fortran.main_module   
-     return 0.6+0.5*tanh( (M.zt[k-1]-M.zt[M.nz//2-1])/M.zt[0]*300)
-
+     Lz = M.nz*M.dzt[0]   
+     zstar = -Lz/2.   
+     #return 0.6+0.5*tanh( (M.zt[k-1]-M.zt[M.nz//2-1])/M.zt[0]*300)
+     return 0.6-0.5*tanh( (M.zt[k]-zstar)/Lz*300)
          
    def set_initial_conditions(self):
      """ setup initial conditions
@@ -67,12 +69,28 @@ class kelv1(pyOM):
 
      # initial conditions
      from numpy.random import randn
+     Lx = M.nx*M.dxt[1]
+     Lz = M.nz*M.dzt[0]   
+     kx = 4*pi/Lx
+     A = 0.2
+     zstar = -Lz/2.
+        
      for k in range(M.nz):
-       M.u[:,:,k,:]   = self.u_star_fct(k+1)
+       
+       M.u[:,:,k,:]   = self.u_star_fct(k)
        for i in range(M.is_pe,M.ie_pe+1):
         ii = self.if2py(i)
-        fxa=0.05*M.zt[0]*sin(M.xt[ii]/(M.nx*M.dxt[1])*4*pi)*sin(M.zt[k]/( M.zt[0]-M.dzt[0]/2)*pi)
-        M.u[ii,:,k,:]= fxa+  M.u[ii,:,k,:]
+        
+        if M.zt[k]>zstar:
+          psi = +A*complex(1,.0)*exp(-kx*(M.zt[k]-zstar) )*exp(complex(0,1.)*M.xt[ii]*kx)
+          M.u[ii,:,k,:] += -real( -kx*psi)
+        else:
+          psi = -A*complex(0,1.)*exp(+kx*(M.zt[k]-zstar) )*exp(complex(0,1.)*M.xt[ii]*kx) 
+          M.u[ii,:,k,:] += -real( kx*psi )            
+        M.w[ii,:,k,:] = real( complex(0,1.)*kx*psi ) 
+        
+         
+     #stop   
      return
    
 
@@ -117,14 +135,23 @@ class kelv1(pyOM):
        co=ax.contourf(self.xt_gl,M.zt, self.temp_gl[:,0,:].transpose())
        self.figure.colorbar(co)
        ax.quiver(self.xt_gl[::2],M.zt[::2],self.u_gl[::2,0,::2].transpose(),self.w_gl[::2,0,::2].transpose() )
-       ax.set_title('Temperature [deg C]')
-       ax.set_xlabel('x [m]')
+       ax.set_title('Temperature [deg C] and velocity')      
        ax.set_ylabel('z [m]')
-       #ax.axis('tight')
+       ax.set_xticks([])
+    
+       uback = M.zt*0.
+       for k in range(M.nz):  uback[k] = self.u_star_fct(k)
+       uu =  self.u_gl - uback[None,None,:]
+       ax=self.figure.add_subplot(212)
+       co=ax.contourf(self.xt_gl,M.zt, self.temp_gl[:,0,:].transpose()) 
+       self.figure.colorbar(co)
+       ax.quiver(self.xt_gl[::2],M.zt[::2],uu[::2,0,::2].transpose(),self.w_gl[::2,0,::2].transpose() )
+       ax.set_title('Velocity perturbations') 
+       ax.set_xlabel('x [m]') 
        return
 
 
 if __name__ == "__main__":
       m=kelv1()
       dt=m.fortran.main_module.dt_tracer
-      m.run( snapint = 2.0 ,runlen = 50.0)
+      m.run( snapint = .25 ,runlen = 50.0)

@@ -23,6 +23,7 @@ subroutine set_parameter
   f0 = 1e-4; N0 = 50*f0; dt_mom = 400/fac! 4./N0
   
   nx = int(100*fac); ny = int(100*fac); nz = int(10*fac)
+  !nx = int(50*fac); ny = int(50*fac); nz = int(10*fac)
   if (.not.enable_cyclic_y) then
    ny = ny/2
    Ly = Ly/2.
@@ -32,14 +33,18 @@ subroutine set_parameter
   enable_conserve_energy = .false. 
   coord_degree           = .false. 
   enable_hydrostatic     = .true.
-  eq_of_state_type = 1 
+  ! eq_of_state_type = 1 
+  eq_of_state_type = 0
   congr_max_iterations = 5000
   congr_epsilon = 1e-12!1e-9
   !congr_epsilon_non_hydro=   1d-6
   AB_eps = 0.01  
   
-  !enable_biharmonic_friction = .true.
-  !A_hbi = 2e10/fac**4 
+  enable_biharmonic_friction = .true.
+  A_hbi = 0.5e9/fac**4 
+  !A_hbi = 0.5e10/fac**3
+  !enable_biharmonic_mixing = .true.
+  !K_hbi = A_hbi
   
   enable_diag_snapshots  = .true.; snapint  = 15*86400.
   enable_diag_ts_monitor = .true.; ts_monint = dt_mom
@@ -52,8 +57,7 @@ subroutine set_parameter
   opt_balance_average_times = 5
   opt_balance_average = 2*pi*0.7/1e-4
   opt_balance_temp_only = .true. 
-  
-end subroutine set_parameter
+ end subroutine set_parameter
 
 
 subroutine set_grid
@@ -81,7 +85,7 @@ subroutine set_initial_conditions
  use diagnostics_module 
  implicit none
  integer :: i,j,k,n
- real*8 :: alpha,get_drhodT
+ !real*8 :: alpha,get_drhodT
  real*8 :: bs(nx,ny)
  real*8 :: x(nx),y(ny),z(nz)
  
@@ -95,7 +99,7 @@ subroutine set_initial_conditions
    z(i)=(i-1)*dzt(1)
  enddo 
  
- alpha = get_drhodT(35d0,5d0,0d0) 
+ !alpha = get_drhodT(35d0,5d0,0d0) 
 
  if (enable_cyclic_y) then
   do k=1,nz
@@ -103,7 +107,8 @@ subroutine set_initial_conditions
     do i=is_pe,ie_pe  
      u(i,j,k,tau) = u0*( ( exp( -(y(j)-3*Ly/4.)**2/(Lx*0.02)**2 ) &
                           -exp( -(y(j)-1*Ly/4.)**2/(Lx*0.02)**2 )  )*cos(z(k)/Lz*pi) &
-          + 0.05*sin(x(i)/Lx*10*pi)*sin(y(j)/Ly*2*pi)*cos(z(k)/Lz*pi) )     
+          + 0.05*sin(x(i)/Lx*10*pi)*sin(y(j)/Ly*2*pi)*cos(z(k)/Lz*pi) )   
+     !v(i,j,k,tau) = 0.001*sin(x(i)/Lx*5*pi)*cos(z(k)/Lz*pi)*sin(y(j)/Ly*pi)      ! this is new      
     enddo
    enddo
   enddo
@@ -112,14 +117,22 @@ subroutine set_initial_conditions
    do j=js_pe,je_pe
     do i=is_pe,ie_pe  
      u(i,j,k,tau) = u0*(  -exp( -(y(j)-Ly/2.)**2/(Lx*0.02)**2 )*cos(z(k)/Lz*pi) &
-                     + 0.05*sin(x(i)/Lx*10*pi)*sin(y(j)/Ly*2*pi)*cos(z(k)/Lz*pi) )     
+                     + 0.05*sin(x(i)/Lx*10*pi)*sin(y(j)/Ly*2*pi)*cos(z(k)/Lz*pi) )   
+     !v(i,j,k,tau) = 0.001*sin(x(i)/Lx*5*pi)*cos(z(k)/Lz*pi)*sin(y(j)/Ly*pi)      ! this is new           
     enddo
    enddo
   enddo
  endif
+ 
+ u(:,:,:,tau) = u(:,:,:,tau)*maskU
+ v(:,:,:,tau) = v(:,:,:,tau)*maskV
  call border_exchg_xyz(is_pe-onx,ie_pe+onx,js_pe-onx,je_pe+onx,nz,u(:,:,:,tau)) 
  call setcyclic_xyz   (is_pe-onx,ie_pe+onx,js_pe-onx,je_pe+onx,nz,u(:,:,:,tau))
  u(:,:,:,taum1) = u(:,:,:,tau)
+
+ call border_exchg_xyz(is_pe-onx,ie_pe+onx,js_pe-onx,je_pe+onx,nz,v(:,:,:,tau)) 
+ call setcyclic_xyz   (is_pe-onx,ie_pe+onx,js_pe-onx,je_pe+onx,nz,v(:,:,:,tau))
+ v(:,:,:,taum1) = v(:,:,:,tau)
 
  
  do k=1,nz
@@ -130,6 +143,7 @@ subroutine set_initial_conditions
   else
    bs(is_pe:ie_pe,js_pe:je_pe) = (u(is_pe:ie_pe,js_pe:je_pe,k+1,tau)-u(is_pe:ie_pe,js_pe:je_pe,k-1,tau))/(2*dzt(1))
   endif
+  
   bs = -dyt(js_pe)*bs*f0 
   call pe0_recv_2D(nx,ny,bs)
   call pe0_bcast(bs,nx*ny)
@@ -141,7 +155,8 @@ subroutine set_initial_conditions
   ! rho = alpha T , b = - g/rho0 rho, temp  = - b*rho0/g/alpha,  b = - T g/rho0 alpha 
   do j=js_pe,je_pe
    do i=is_pe,ie_pe
-    temp(i,j,k,tau) = -(N0**2*zt(k) + bs(i,j)) *rho_0/grav/alpha*maskT(i,j,k)
+    !temp(i,j,k,tau) = -(N0**2*zt(k) + bs(i,j)) *rho_0/grav/alpha*maskT(i,j,k)
+    temp(i,j,k,tau) = (N0**2*zt(k) + bs(i,j))*maskT(i,j,k)
    enddo
   enddo 
  enddo

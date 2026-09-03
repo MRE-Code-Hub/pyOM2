@@ -1,8 +1,8 @@
 
-! Atmosphere as ideal gas
+! Atmosphere as ideal gas after Vallis Section 2.6.1
 ! k runs here from p=0 to p=p_max, so top-down.
 
-! initial conditions for temp as in Fig. 1 of Snyder et al 91, JAS, A comparison of 
+! initial conditions for temp as in Fig. 1 of C Snyder, WC Skamarock, R Rotunno 91, JAS, A comparison of 
 
 module config_module
  ! use this module only locally in this file
@@ -42,7 +42,7 @@ subroutine set_parameter
  AB_eps = 0.01
 
  enable_biharmonic_friction = .true.
- A_hbi = 1e11*(Lx/nx/40e3)**4   !1e12/fac**4 !   u_t = u/dx**4 , T = (dx/fac)**4
+ A_hbi = 0.5e14/fac**4 !   u_t = u/dx**4 , T = (dx/fac)**4
  enable_biharmonic_mixing = .true.
  K_hbi = A_hbi ! 1e12/fac**4
  !enable_superbee_advection     = .true.
@@ -53,14 +53,14 @@ subroutine set_parameter
  endif
  
  enable_diag_ts_monitor = .true.; ts_monint = dt_mom
- enable_diag_snapshots  = .true.; snapint   = 86400*2
+ enable_diag_snapshots  = .true.; snapint   = 86400*11
   
- enable_diag_opt_balance = .true.; 
+ !enable_diag_opt_balance = .true.; 
  opt_balance_int = snapint
  opt_balance_period  = 0.5* 2*pi/f0
  opt_balance_max_Itts = 1
  opt_balance_average_times = 5
- opt_balance_average = 2*pi*0.7/1e-4
+ opt_balance_average = 2*pi*0.7/f0
  opt_balance_temp_only = .true. 
 
 end subroutine set_parameter 

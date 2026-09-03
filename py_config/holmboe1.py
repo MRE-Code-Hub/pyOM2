@@ -49,18 +49,25 @@ class kelv2(pyOM):
      zw = zw - zw[-1]
      alpha = self.fortran.linear_eq_of_state.linear_eq_of_state_drhodt()
      u=1
-     z1=-15.0
-     z2=-5.0
+     #z1,z2=-15.0,-5.0   # large gap
+     z1,z2=-12.0,-8.0  # small gap
      S=2*u/(z2-z1)
      self.U=0*zt-u
-     for k in range(M.nz):
-         if   zt[k]>z1 and zt[k]< z2: self.U[k]=S*(zt[k]-z1)-u
-         elif zt[k]>=z2:              self.U[k]=u
+     # two vorticity jumps
+     #for k in range(M.nz):
+     #    if   zt[k]>z1 and zt[k]< z2: self.U[k]=S*(zt[k]-z1)-u
+     #    elif zt[k]>=z2:              self.U[k]=u
+    
+     # only one vorticity jump  
+     for k in range(M.nz):    
+         if   zt[k]>z2 : self.U[k]=S*(zt[k]-z1)-u   
+         
      T0 = 1.0
      z3=-10.0
      self.T=0*zt
-     for k in range(M.nz):
-           if zt[k]>z3: self.T[k]=T0
+     # density jump
+     #for k in range(M.nz): 
+     #       if zt[k]>z3: self.T[k]=T0
      self.B=-self.T*alpha*9.81/1024.
      return
 
@@ -162,13 +169,17 @@ class kelv2(pyOM):
        
        co=ax.contourf(self.xt_gl,M.zt, self.temp_gl[:,0,:].transpose())
        self.figure.colorbar(co)
-       ax.quiver(self.xt_gl[::2],M.zt[::2],self.u_gl[::2,0,::2].transpose(),self.w_gl[::2,0,::2].transpose() )
-       ax.set_title('Temperature [deg C]')
+       ax.quiver(self.xt_gl[::2],M.zt[::2],self.u_gl[::2,0,::2].transpose(),
+                                           self.w_gl[::2,0,::2].transpose() )
+       ax.set_title('Temperature [deg C] and velocity')
        ax.set_ylabel('z [m]')
+       ax.set_xticks([])
        #ax.axis('tight')
        
        ax=self.figure.add_subplot(212)
        co=ax.contourf(self.xt_gl,M.zt, self.w_gl[:,0,:].transpose())
+       ax.quiver(self.xt_gl[::2],M.zt[::2],(self.u_gl-self.U[None,None,:])[::2,0,::2].transpose(),
+                                           self.w_gl[::2,0,::2].transpose() ) 
        self.figure.colorbar(co)
        ax.set_title('vertical velocity [m/s]')
        ax.set_xlabel('x [m]')
@@ -191,13 +202,13 @@ def pe(U,B0,dz,kx,fh,f0):
   BZ[0]=BZ[1];BZ[-1]=BZ[-2];
   # allocate some variables
   I=complex(0,1)
-  A  = np.zeros((5,5,N),'Complex64')
-  B  = np.zeros((5,5,N),'Complex64')
-  C  = np.zeros((5,5,N),'Complex64')
-  AA = np.zeros((5*N,5*N),'Complex64')
-  om_max= np.zeros((kx.shape[0],),'Complex64');
+  A  = np.zeros((5,5,N),np.complex64)
+  B  = np.zeros((5,5,N),np.complex64)
+  C  = np.zeros((5,5,N),np.complex64)
+  AA = np.zeros((5*N,5*N),np.complex64)
+  om_max= np.zeros((kx.shape[0],),np.complex64);
   omax  = complex(0,0)
-  AAmax = np.zeros((5*N,5*N),'Complex64')
+  AAmax = np.zeros((5*N,5*N),np.complex64)
   kmax  = 0;
   # enter main loop
   for i in range(kx.shape[0]): # loop over zonal wavelength

@@ -258,7 +258,7 @@ subroutine isoneutral_skew_diffusion(is_,ie_,js_,je_,nz_,tr,istemp)
          sumz = sumz + diffloc*Ai_ez(i,j,k,ip,kr) *(tr(i+ip,j,kpkr,tau)-tr(i+ip,j,km1kr,tau))
        enddo
      enddo
-     flux_east(i,j,k) = sumz/(4*dzt(k)) + (tr(i+1,j,k,tau)-tr(i,j,k,tau))/(cost(j)*dxu(i)) *K_11(i,j,k)
+     flux_east(i,j,k) = sumz/(4*dzt(k))   ! K_11 term removed: skew tensor has no diagonal part, K_11 is already applied in isoneutral_diffusion
    enddo
   enddo
  enddo
@@ -277,7 +277,7 @@ subroutine isoneutral_skew_diffusion(is_,ie_,js_,je_,nz_,tr,istemp)
          sumz = sumz + diffloc*Ai_nz(i,j,k,jp,kr) *(tr(i,j+jp,kpkr,tau)-tr(i,j+jp,km1kr,tau))
        enddo
      enddo
-     flux_north(i,j,k) = cosu(j)*( sumz/(4*dzt(k))+ (tr(i,j+1,k,tau)-tr(i,j,k,tau))/dyu(j)*K_22(i,j,k) )
+     flux_north(i,j,k) = cosu(j)*( sumz/(4*dzt(k)) )   ! K_22 term removed, see above
    enddo
   enddo
  enddo

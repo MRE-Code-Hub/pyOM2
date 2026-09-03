@@ -89,8 +89,8 @@ class kelv1(pyOM):
 
    def set_forcing(self):
      M=self.fortran.main_module   
-     if M.enable_tempsalt_sources: M.temp_source[:]=self.t_rest*(self.t_star-M.temp[:,:,:,M.tau-1])#*M.maskt[:]
-     if M.enable_momentum_sources: M.u_source[:]   =self.t_rest*(self.u_star-M.u[:,:,:,M.tau-1]   )#*M.masku[:]
+     #if M.enable_tempsalt_sources: M.temp_source[:]=self.t_rest*(self.t_star-M.temp[:,:,:,M.tau-1])#*M.maskt[:]
+     #if M.enable_momentum_sources: M.u_source[:]   =self.t_rest*(self.u_star-M.u[:,:,:,M.tau-1]   )#*M.masku[:]
      return
 
 
@@ -133,7 +133,7 @@ class kelv1(pyOM):
        co=ax.contourf(self.xt_gl,M.zt, self.temp_gl[:,0,:].transpose())
        self.figure.colorbar(co)
        ax.quiver(self.xt_gl[::2],M.zt[::2],self.u_gl[::2,0,::2].transpose(),self.w_gl[::2,0,::2].transpose() )
-       ax.set_title('Temperature [deg C]')
+       ax.set_title('Temperature [deg C] and velocity')
        ax.set_xlabel('x [m]')
        ax.set_ylabel('z [m]')
        #ax.axis('tight')

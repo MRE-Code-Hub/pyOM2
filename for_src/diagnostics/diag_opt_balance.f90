@@ -7,11 +7,13 @@
 module diag_opt_balance_module
  implicit none
  integer :: opt_balance_max_Itts = 5
- real*8 :: opt_balance_period  = 86400.*5
- real*8 :: opt_balance_average = 86400.*5
+ real*8  :: opt_balance_period   = 86400.*5
+ real*8  :: opt_balance_average  = 86400.*5
  integer :: opt_balance_average_times = 1
- real*8 :: opt_balance_tol     = 1d-9
+ real*8  :: opt_balance_tol      = 1d-9
  logical :: opt_balance_temp_only = .false.
+ logical :: opt_balance_reverse_mixing = .true.
+ logical :: opt_balance_exchange_base_point = .true.
  
  real*8 :: norm_diff
  real*8 :: opt_rho,opt_A_ab,opt_B_ab
@@ -112,8 +114,7 @@ subroutine diag_opt_balance
  if (coord_degree)                  call halt_stop('No spherical coordinates in opt_balance')
  if (.not. enable_AB_time_stepping) call halt_stop('Need AB time stepping in opt balance')
  if (enable_tempsalt_sources)       call halt_stop('No source terms in opt_balance')
-   
-   
+ 
  ! calculate horizontally averaged temperature and salinity  
  do k=1,nz
   fxa = 0.; fxb=0; fxc=0
@@ -130,7 +131,7 @@ subroutine diag_opt_balance
   temp_ave(:,:,k) = fxb/fxa
   salt_ave(:,:,k) = fxc/fxa
  enddo
-  
+
  ! remove horizontally averaged temperature and salinity from model state
  temp(:,:,:,tau) = temp(:,:,:,tau) - temp_ave
  salt(:,:,:,tau) = salt(:,:,:,tau) - salt_ave
@@ -143,31 +144,36 @@ subroutine diag_opt_balance
  n_end_ramp = int(opt_balance_period / dt_tracer) + 1
  n_end_ave  = int(opt_balance_average / dt_tracer) + 1
 
+
+
  ! set well defined model state
  do i=1,3
   u(:,:,:,i) = u_bal; v(:,:,:,i) = v_bal; w(:,:,:,i) = w_bal; psi(:,:,i) = psi_bal
   temp(:,:,:,i) = temp_bal; salt(:,:,:,i) = salt_bal; 
  enddo
 
- ! save base point by time averaging in linear model
- if (my_pe==0)  print '(a,i5,a,i5,a)',' to save base point, integrating linear model for ',&
-                       n_end_ave*opt_balance_average_times,' timesteps in ', &
-                       opt_balance_average_times,' chunks'
+ if (opt_balance_exchange_base_point) then
+ 
+  ! save base point by time averaging in linear model
+  if (my_pe==0)  print '(a,i5,a,i5,a)',' to save base point, integrating linear model for ',&
+                        n_end_ave*opt_balance_average_times,' timesteps in ', &
+                        opt_balance_average_times,' chunks'
 
- do m=1,opt_balance_average_times
-  if (my_pe==0)  print*,' chunk ',m
-  call diag_opt_time_ave(n_end_ave,u_base,v_base,w_base,temp_base,salt_base,psi_base)
-  do i=1,3
+  do m=1,opt_balance_average_times
+   if (my_pe==0)  print*,' chunk ',m
+   call diag_opt_time_ave(n_end_ave,u_base,v_base,w_base,temp_base,salt_base,psi_base)
+   do i=1,3
      u(:,:,:,i) = u_base;v(:,:,:,i) = v_base; w(:,:,:,i) = w_base; psi(:,:,i) = psi_base
      temp(:,:,:,i) = temp_base; salt(:,:,:,i) = salt_base; 
-  enddo 
- enddo
+   enddo 
+  enddo
 
- ! restore model state
- do i=1,3
-  u(:,:,:,i) = u_bal; v(:,:,:,i) = v_bal; w(:,:,:,i) = w_bal; psi(:,:,i) = psi_bal
-  temp(:,:,:,i) = temp_bal; salt(:,:,:,i) = salt_bal; 
- enddo
+  ! restore model state
+  do i=1,3
+   u(:,:,:,i) = u_bal; v(:,:,:,i) = v_bal; w(:,:,:,i) = w_bal; psi(:,:,i) = psi_bal
+   temp(:,:,:,i) = temp_bal; salt(:,:,:,i) = salt_bal; 
+  enddo
+ endif
  
  norm_diff = 1d0
 
@@ -199,34 +205,37 @@ subroutine diag_opt_balance
     if (my_pe==0)  print '(a,i5,a)',' integrating forward to non-linear end for ',n_end_ramp,' timesteps '
     call diag_opt_forward_integration(n_end_ramp)
 
-    ! here we need to save the model state
-    u_save = u(:,:,:,1); v_save = v(:,:,:,1); w_save = w(:,:,:,1); psi_save = psi(:,:,1)
-    temp_save = temp(:,:,:,1); salt_save = salt(:,:,:,1); 
-    
-    ! apply boundary condition at non linear end
-    if (my_pe==0)  print '(a,i5,a,i5,a)',' integrating linear model for ',&
-                       n_end_ave*opt_balance_average_times,' timesteps in ', &
-                       opt_balance_average_times,' chunks'
-    do m=1,opt_balance_average_times
-     if (my_pe==0)  print*,' chunk ',m
-     call diag_opt_time_ave(n_end_ave,u_loc,v_loc,w_loc,temp_loc,salt_loc,psi_loc)
-     do i=1,3
-      u(:,:,:,i) = u_loc; v(:,:,:,i) = v_loc; w(:,:,:,i) = w_loc; psi(:,:,i) = psi_loc
-      temp(:,:,:,i) = temp_loc; salt(:,:,:,i) = salt_loc; 
-     enddo
-    enddo
+    if (opt_balance_exchange_base_point) then
+        
+     ! here we need to save the model state
+     u_save = u(:,:,:,1); v_save = v(:,:,:,1); w_save = w(:,:,:,1); psi_save = psi(:,:,1)
+     temp_save = temp(:,:,:,1); salt_save = salt(:,:,:,1); 
 
-    ! exchange base point
-    if (my_pe==0)  print*,'exchanging base point'
-    do i=1,3
-     u(:,:,:,i) = u_save - u_loc + u_base
-     v(:,:,:,i) = v_save - v_loc + v_base
-     w(:,:,:,i) = w_save- w_loc + w_base
-     psi(:,:,i) = psi_save - psi_loc + psi_base
-     temp(:,:,:,i) = temp_save - temp_loc + temp_base
-     salt(:,:,:,i) = salt_save - salt_loc + salt_base
-    enddo
-   
+     ! apply boundary condition at non linear end
+     if (my_pe==0)  print '(a,i5,a,i5,a)',' integrating linear model for ',&
+                        n_end_ave*opt_balance_average_times,' timesteps in ', &
+                        opt_balance_average_times,' chunks'
+     do m=1,opt_balance_average_times
+      if (my_pe==0)  print*,' chunk ',m
+      call diag_opt_time_ave(n_end_ave,u_loc,v_loc,w_loc,temp_loc,salt_loc,psi_loc)
+      do i=1,3
+       u(:,:,:,i) = u_loc; v(:,:,:,i) = v_loc; w(:,:,:,i) = w_loc; psi(:,:,i) = psi_loc
+       temp(:,:,:,i) = temp_loc; salt(:,:,:,i) = salt_loc; 
+      enddo
+     enddo
+
+     ! exchange base point
+     if (my_pe==0)  print*,'exchanging base point'
+     do i=1,3
+      u(:,:,:,i) = u_save - u_loc + u_base
+      v(:,:,:,i) = v_save - v_loc + v_base
+      w(:,:,:,i) = w_save- w_loc + w_base
+      psi(:,:,i) = psi_save - psi_loc + psi_base
+      temp(:,:,:,i) = temp_save - temp_loc + temp_base
+      salt(:,:,:,i) = salt_save - salt_loc + salt_base
+     enddo
+    endif
+    
     call diag_opt_balance_norm(u_bal,v_bal)
 
     ! update reference state
@@ -315,19 +324,35 @@ subroutine diag_opt_backward_integration(n_end)
   real*8 :: ramp
   integer :: n,n_end
   logical :: enable_back 
+  real*8 :: A_hbi_back, K_hbi_back, kappaM_back, kappaH_back
   
   enable_back = enable_superbee_advection 
   if (enable_superbee_advection ) then
    if (my_pe==0) print*,' switching off superbee advection for backward integration'
    enable_superbee_advection     = .false.
   endif
-  if (A_hbi>0d0 .and. enable_biharmonic_friction) then
-   if (my_pe==0) print*,' reversing biharm. friction for backward integration'   
-   A_hbi = -abs(A_hbi)
-  endif
-  if (K_hbi>0d0 .and. enable_biharmonic_mixing) then
-   if (my_pe==0) print*,' reversing biharm. mixing for backward integration'
-   K_hbi = -abs(K_hbi)
+  
+  if (opt_balance_reverse_mixing) then
+   if (A_hbi>0d0 .and. enable_biharmonic_friction) then
+    if (my_pe==0) print*,' reversing biharm. friction for backward integration'   
+    A_hbi = -abs(A_hbi)
+   endif
+   if (K_hbi>0d0 .and. enable_biharmonic_mixing) then
+    if (my_pe==0) print*,' reversing biharm. mixing for backward integration'
+    K_hbi = -abs(K_hbi)
+   endif
+   if (kappaM_0>0d0) then
+    if (my_pe==0) print*,' reversing vertical friction for backward integration'   
+    kappaM_0 = -abs(kappaM_0)
+   endif
+   if (kappaH_0>0d0) then
+    if (my_pe==0) print*,' reversing vertical mixing for backward integration'   
+    kappaH_0 = -abs(kappaH_0)
+   endif
+  else
+   if (my_pe==0) print*,' switching off all mixing for backward integration'
+   A_hbi_back=A_hbi; K_hbi_back=K_hbi; kappaM_back=kappaM_0; kappaH_back=kappaH_0
+   A_hbi=0; K_hbi=0; kappaM_0=0; kappaH_0=0
   endif
   
   opt_A_ab = 1.; opt_B_ab = 0.;  taum1 = 1 ; tau = 2; taup1 = 3
@@ -341,9 +366,15 @@ subroutine diag_opt_backward_integration(n_end)
     tau   = mod(tau,3)+1
     taum1 = mod(taum1,3)+1
   enddo 
-  enable_superbee_advection  = enable_back 
-  A_hbi = +abs(A_hbi)
-  K_hbi = +abs(K_hbi)
+  enable_superbee_advection  = enable_back   
+  if (opt_balance_reverse_mixing) then
+   A_hbi = +abs(A_hbi)
+   K_hbi = +abs(K_hbi)
+   kappaM_0 = +abs(kappaM_0)
+   kappaH_0 = +abs(kappaH_0)
+  else
+   A_hbi=A_hbi_back; K_hbi=K_hbi_back; kappaM_0=kappaM_back; kappaH_0=kappaH_back
+  endif
   ! leave with well defined model state
   call diag_opt_set_state_well() 
 end subroutine diag_opt_backward_integration
@@ -446,6 +477,7 @@ subroutine diag_opt_time_step(linear)
  v(:,:,:,taup1) = v(:,:,:,tau)+dt_mom*(  opt_A_ab*dv(:,:,:,tau) + opt_B_ab*dv(:,:,:,taum1) )*maskV
  
  if (enable_biharmonic_friction) call diag_opt_biharmonic_friction
+ if (abs(kappaM_0)>0d0) call diag_opt_vert_friction 
   
  ! forcing for surface pressure 
  fpx=0.;fpy=0.
@@ -497,26 +529,26 @@ subroutine diag_opt_time_step(linear)
  call setcyclic_xyz   (is_pe-onx,ie_pe+onx,js_pe-onx,je_pe+onx,nz,v(:,:,:,taup1))
   
  ! integrate from bottom to surface to see error in w
- k=1
- do j=js_pe-onx+1,je_pe+onx
-   do i=is_pe-onx+1,ie_pe+onx
-         w(i,j,k,taup1) =-maskW(i,j,k)*dzt(k)* &
-               ((        u(i,j,k,taup1)-          u(i-1,j,k,taup1))/(cost(j)*dxt(i)) &
-               +(cosu(j)*v(i,j,k,taup1)-cosu(j-1)*v(i,j-1,k,taup1))/(cost(j)*dyt(j)) )
-   enddo
- enddo
- do k=2,nz
-  do j=js_pe-onx+1,je_pe+onx
-   do i=is_pe-onx+1,ie_pe+onx
-          w(i,j,k,taup1) = w(i,j,k-1,taup1)-maskW(i,j,k)*dzt(k)* &
-               ((        u(i,j,k,taup1)          -u(i-1,j,k,taup1))/(cost(j)*dxt(i)) &
-               +(cosu(j)*v(i,j,k,taup1)-cosu(j-1)*v(i,j-1,k,taup1))/(cost(j)*dyt(j)) )
-   enddo
-  enddo
- enddo
+ call vertical_velocity
+ !k=1
+ !do j=js_pe-onx+1,je_pe+onx
+ !  do i=is_pe-onx+1,ie_pe+onx
+ !        w(i,j,k,taup1) =-maskW(i,j,k)*dzt(k)* &
+ !              ((        u(i,j,k,taup1)-          u(i-1,j,k,taup1))/(cost(j)*dxt(i)) &
+ !              +(cosu(j)*v(i,j,k,taup1)-cosu(j-1)*v(i,j-1,k,taup1))/(cost(j)*dyt(j)) )
+ !  enddo
+ !enddo
+ !do k=2,nz
+ ! do j=js_pe-onx+1,je_pe+onx
+ !  do i=is_pe-onx+1,ie_pe+onx
+ !         w(i,j,k,taup1) = w(i,j,k-1,taup1)-maskW(i,j,k)*dzt(k)* &
+ !              ((        u(i,j,k,taup1)          -u(i-1,j,k,taup1))/(cost(j)*dxt(i)) &
+ !              +(cosu(j)*v(i,j,k,taup1)-cosu(j-1)*v(i,j-1,k,taup1))/(cost(j)*dyt(j)) )
+ !  enddo
+ ! enddo
+ !enddo
  
- call advect_tracer(is_pe-onx,ie_pe+onx,js_pe-onx,je_pe+onx,nz,temp_ave,dtemp_ave(:,:,:,tau) )
-  
+ call advect_tracer(is_pe-onx,ie_pe+onx,js_pe-onx,je_pe+onx,nz,temp_ave,dtemp_ave(:,:,:,tau) )  
  if (linear) then
   temp(:,:,:,taup1) = temp(:,:,:,tau)+dt_tracer*( opt_A_ab*dtemp_ave(:,:,:,tau)   &
                                                 + opt_B_ab*dtemp_ave(:,:,:,taum1) )*maskT
@@ -529,6 +561,7 @@ subroutine diag_opt_time_step(linear)
    call diag_opt_biharmonic_mixing(temp(:,:,:,tau),aloc)
    temp(:,:,:,taup1) = temp(:,:,:,taup1) + dt_tracer*aloc
  endif 
+ if (abs(kappaH_0)>0d0) call diag_opt_vert_mixing(temp)
  call border_exchg_xyz(is_pe-onx,ie_pe+onx,js_pe-onx,je_pe+onx,nz,temp(:,:,:,taup1)) 
  call setcyclic_xyz   (is_pe-onx,ie_pe+onx,js_pe-onx,je_pe+onx,nz,temp(:,:,:,taup1))
 
@@ -546,6 +579,7 @@ subroutine diag_opt_time_step(linear)
     call diag_opt_biharmonic_mixing(salt(:,:,:,tau),aloc)
     salt(:,:,:,taup1) = salt(:,:,:,taup1) + dt_tracer*aloc
    endif   
+   if (abs(kappaH_0)>0d0) call diag_opt_vert_mixing(salt)
    call border_exchg_xyz(is_pe-onx,ie_pe+onx,js_pe-onx,je_pe+onx,nz,salt(:,:,:,taup1)) 
    call setcyclic_xyz   (is_pe-onx,ie_pe+onx,js_pe-onx,je_pe+onx,nz,salt(:,:,:,taup1))
  endif
@@ -715,6 +749,92 @@ subroutine diag_opt_biharmonic_mixing(var,dvar)
   enddo
  enddo
 end subroutine diag_opt_biharmonic_mixing
+
+
+
+subroutine diag_opt_vert_friction
+ !---------------------------------------------------------------------------------
+ ! vertical friction of momentum
+ !---------------------------------------------------------------------------------
+ use main_module   
+ implicit none
+ integer :: i,j,k
+ do k=1,nz-1
+  do j=js_pe-1,je_pe
+   do i=is_pe-1,ie_pe
+    flux_top(i,j,k)=kappaM_0*(u(i,j,k+1,tau)-u(i,j,k,tau))/dzw(k)*maskU(i,j,k+1)*maskU(i,j,k)
+   enddo
+  enddo
+ enddo
+ flux_top(:,:,nz)=0d0
+ k=1; u(:,:,k,taup1) = u(:,:,k,taup1) + flux_top(:,:,k)/dzt(k)*maskU(:,:,k)
+ do k=2,nz
+   u(:,:,k,taup1) = u(:,:,k,taup1) + (flux_top(:,:,k)-flux_top(:,:,k-1))/dzt(k)*maskU(:,:,k)
+ enddo 
+ do k=1,nz-1
+  do j=js_pe-1,je_pe
+   do i=is_pe-1,ie_pe
+    flux_top(i,j,k)=kappaM_0*(v(i,j,k+1,tau)-v(i,j,k,tau))/dzw(k)*maskV(i,j,k+1)*maskV(i,j,k)
+   enddo
+  enddo
+ enddo
+ flux_top(:,:,nz)=0d0
+ k=1; v(:,:,k,taup1) = v(:,:,k,taup1) + flux_top(:,:,k)/dzt(k)*maskV(:,:,k)
+ do k=2,nz
+   v(:,:,k,taup1) = v(:,:,k,taup1) + (flux_top(:,:,k)-flux_top(:,:,k-1))/dzt(k)*maskV(:,:,k)
+ enddo
+ if (.not.enable_hydrostatic) then
+  print*,'you forgot something!'
+  call halt_stop('in diag_opt_vert_friction')
+ endif
+end subroutine diag_opt_vert_friction
+
+
+
+
+
+subroutine diag_opt_vert_mixing(var)
+ !---------------------------------------------------------------------------------
+ ! implicit vertical mixing of temp/salt
+ !---------------------------------------------------------------------------------
+ use main_module   
+ implicit none
+ integer :: i,j,k,ks
+ real*8 :: var(is_pe-onx:ie_pe+onx,js_pe-onx:je_pe+onx,nz,3)
+ real*8 :: a_tri(nz),b_tri(nz),c_tri(nz),d_tri(nz),delta(nz)
+
+ a_tri=0.0;b_tri=0.0; c_tri=0.0; d_tri=0.0; delta=0.0
+ do j=js_pe,je_pe
+   do i=is_pe,ie_pe
+    ks=kbot(i,j)
+    if (ks>0) then
+     do k=ks,nz-1
+      delta(k) = dt_tracer/dzw(k)*kappaH_0
+     enddo
+     delta(nz)=0.0
+     do k=ks+1,nz
+       a_tri(k) = - delta(k-1)/dzt(k)
+     enddo
+     a_tri(ks)=0.0
+     do k=ks+1,nz-1
+      b_tri(k) = 1+ delta(k)/dzt(k) + delta(k-1)/dzt(k) 
+     enddo
+     b_tri(nz) = 1+ delta(nz-1)/dzt(nz) 
+     b_tri(ks) = 1+ delta(ks)/dzt(ks)   
+     do k=ks,nz-1
+      c_tri(k) = - delta(k)/dzt(k)
+     enddo
+     c_tri(nz)=0.0
+     d_tri(ks:nz)=var(i,j,ks:nz,taup1) 
+     !d_tri(nz) = d_tri(nz) + dt_tracer*forc_temp_surface(i,j)/dzt(nz)
+     call solve_tridiag(a_tri(ks:nz),b_tri(ks:nz),c_tri(ks:nz),d_tri(ks:nz),var(i,j,ks:nz,taup1),nz-ks+1)
+    endif
+   enddo
+ enddo 
+ 
+end subroutine diag_opt_vert_mixing
+
+
 
 
 
